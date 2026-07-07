@@ -1,55 +1,96 @@
 #!/bin/bash
 # VBoxMetal3D - Permanent GPU Acceleration for VirtualBox
-# Usage: sudo ./vboxmetal-install-permanent.sh --install
+# Creates a native wrapper app in ~/Applications/ that always uses Metal.
 
 set -e
 
-VBOX_PLIST="/Applications/VirtualBox.app/Contents/Info.plist"
+WRAPPER_APP="$HOME/Applications/VBoxMetal3D.app"
 METAL_LIB="$HOME/Library/VBoxMetal3D/VBoxMetalAccel.dylib"
-BACKUP_PLIST="$HOME/Library/VBoxMetal3D/Info.plist.backup"
+LAUNCHER_SRC="$HOME/projects/VBoxMetal3D/tools/launcher.c"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
-check_root() {
-    if [ "$(id -u)" != "0" ]; then echo -e "${YELLOW}Re-run with sudo${NC}"; exit 1; fi
-}
-
 install() {
-    check_root
-    [ -f "$BACKUP_PLIST" ] || cp "$VBOX_PLIST" "$BACKUP_PLIST"
-    [ -f "$METAL_LIB" ] || { echo -e "${RED}✗ Build first: make install${NC}"; exit 1; }
+    if [ ! -f "$METAL_LIB" ]; then
+        echo -e "${YELLOW}✗ Build Metal backend first: cd ~/projects/VBoxMetal3D && make install${NC}"
+        exit 1
+    fi
+    if [ ! -f "$LAUNCHER_SRC" ]; then
+        echo -e "${RED}✗ launcher.c not found. Reclone from GitHub.${NC}"
+        exit 1
+    fi
 
-    # Modify a copy in /tmp, then copy back (PlistBuddy can't write /Applications directly on Sequoia)
-    cp "$VBOX_PLIST" /tmp/Info.plist
-    /usr/libexec/PlistBuddy -c 'Add :LSEnvironment dict' /tmp/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c 'Set :LSEnvironment dict' /tmp/Info.plist 2>/dev/null
-    /usr/libexec/PlistBuddy -c "Add :LSEnvironment:DYLD_INSERT_LIBRARIES string $METAL_LIB" /tmp/Info.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSEnvironment:DYLD_INSERT_LIBRARIES $METAL_LIB" /tmp/Info.plist 2>/dev/null
-    cp /tmp/Info.plist "$VBOX_PLIST"
+    # Compile the launcher
+    clang -target arm64-apple-macos15.0 -O2 -o /tmp/VBoxMetal3D_launcher "$LAUNCHER_SRC"
 
-    echo -e "${GREEN}✓ Permanent Metal acceleration installed${NC}"
-    /usr/libexec/PlistBuddy -c "Print :LSEnvironment" "$VBOX_PLIST"
+    # Create/update the wrapper app
+    mkdir -p "$WRAPPER_APP/Contents/MacOS"
+    cp /tmp/VBoxMetal3D_launcher "$WRAPPER_APP/Contents/MacOS/VBoxMetal3D"
+
+    cat > "$WRAPPER_APP/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>VBoxMetal3D</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.vboxmetal.launcher</string>
+    <key>CFBundleName</key>
+    <string>VirtualBox (Metal)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
+EOF
+
+    # Try to copy VirtualBox icon
+    if [ -f /Applications/VirtualBox.app/Contents/Resources/virtualbox.icns ]; then
+        mkdir -p "$WRAPPER_APP/Contents/Resources"
+        cp /Applications/VirtualBox.app/Contents/Resources/virtualbox.icns "$WRAPPER_APP/Contents/Resources/"
+    fi
+
+    echo -e "${GREEN}✓ VirtualBox (Metal).app created at:${NC}"
+    echo "  $WRAPPER_APP"
     echo ""
-    echo "Open VirtualBox normally — GPU acceleration is always active."
+    echo -e "${YELLOW}Add to Dock:${NC}"
+    echo "  open $WRAPPER_APP"
+    echo "  (then right-click the icon → Options → Keep in Dock)"
+    echo ""
+    echo -e "${BLUE}Now just click the Dock icon to launch with Metal GPU.${NC}"
+    echo ""
+    echo -e "${YELLOW}To verify it works, check Console.app for "VBoxMetal3D:" messages.${NC}"
 }
 
 uninstall() {
-    check_root
-    if [ -f "$BACKUP_PLIST" ]; then cp "$BACKUP_PLIST" "$VBOX_PLIST"; echo -e "${GREEN}✓ Restored from backup${NC}"
-    else
-        cp "$VBOX_PLIST" /tmp/Info.plist
-        /usr/libexec/PlistBuddy -c 'Delete :LSEnvironment' /tmp/Info.plist 2>/dev/null || true
-        cp /tmp/Info.plist "$VBOX_PLIST"
-        echo -e "${GREEN}✓ Removed LSEnvironment${NC}"
-    fi
+    rm -rf "$WRAPPER_APP"
+    echo -e "${GREEN}✓ Wrapper app removed${NC}"
+    echo "Remove the Dock icon manually (right-click → Options → Remove from Dock)"
 }
 
 status() {
-    local d
-    d=$(/usr/libexec/PlistBuddy -c 'Print :LSEnvironment:DYLD_INSERT_LIBRARIES' "$VBOX_PLIST" 2>/dev/null) && echo -e "${GREEN}✓ ACTIVE: $d${NC}" || echo -e "${YELLOW}✗ Not installed${NC}"
+    if [ -d "$WRAPPER_APP" ]; then
+        echo -e "${GREEN}✓ Wrapper app installed at:${NC}"
+        echo "  $WRAPPER_APP"
+        if [ -f "$METAL_LIB" ]; then
+            echo -e "${GREEN}✓ dylib: $METAL_LIB${NC}"
+        else
+            echo -e "${RED}✗ dylib missing${NC}"
+        fi
+    else
+        echo -e "${YELLOW}✗ Not installed. Run: $0 --install${NC}"
+    fi
 }
 
 case "${1:-}" in
     --install|-i) install ;;
     --uninstall|-u) uninstall ;;
     --status|-s) status ;;
-    *) echo "Usage: sudo $0 --install" ; echo "       sudo $0 --uninstall" ; echo "       $0 --status" ;;
+    *) echo "Usage: $0 --install   (create Metal wrapper app)" ; echo "       $0 --uninstall (remove)" ; echo "       $0 --status    (check)" ;;
 esac
