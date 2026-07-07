@@ -1,7 +1,8 @@
-// MetalInterpose - VirtualBox VRAM unlock + GPU interpose (safe subset)
-// On Apple Silicon, all memory is unified. The 256MB VRAM cap is artificial.
-// This dylib removes the cap via COM interpose and provides Metal GPU
-// acceleration in the host GUI. VM processes use native Metal shim.
+// MetalInterpose - VirtualBox VRAM unlock for Apple Silicon
+// Unified memory means no separate VRAM pool. The 256MB / 1GB caps are
+// software artifacts. COM interpose removes the 256MB GUI cap; the SVGA
+// device's 1GB hardware limit (VGA_VRAM_MAX) requires building VBoxDD
+// from source with a patched VGA_VRAM_MAX in include/VBox/param.h.
 
 #import <Foundation/Foundation.h>
 #include <stdlib.h>
@@ -9,31 +10,22 @@
 #include <stdio.h>
 #include <pthread.h>
 
-// ─── Interpose entry ─────────────────────────────────────────────────────────
-
 typedef struct { const void* replacement; const void* original; } InterposeEntry;
 
-// ─── VRAM interpose ──────────────────────────────────────────────────────────
-
-// CSystemProperties::GetMaxGuestVRAM() const — returns the 256MB GUI cap
+// CSystemProperties::GetMaxGuestVRAM() — returns the 256MB GUI cap
 extern "C" uint32_t __ZNK17CSystemProperties15GetMaxGuestVRAMEv(void);
-static uint32_t myGetMaxGuestVRAM(void) {
-    return 8192;
-}
+static uint32_t myGetMaxGuestVRAM(void) { return 8192; }
 
 // CPlatformProperties::GetSupportedVRAMRange — also caps at 256MB
 extern "C" int __ZN19CPlatformProperties21GetSupportedVRAMRangeE23KGraphicsControllerTypeiRjS1_(
     void*, uint32_t, int, uint32_t*, uint32_t*, uint32_t*);
-static int myGetSupportedVRAMRange(void* self, uint32_t controllerType, int accel3d,
-                                    uint32_t* outMin, uint32_t* outMax, uint32_t* outStride) {
-    int result = __ZN19CPlatformProperties21GetSupportedVRAMRangeE23KGraphicsControllerTypeiRjS1_(
-        self, controllerType, accel3d, outMin, outMax, outStride);
-    if (outMax && *outMax < 8192) *outMax = 8192;
-    return result;
+static int myGetSupportedVRAMRange(void* self, uint32_t ctl, int accel3d,
+                                    uint32_t* min, uint32_t* max, uint32_t* stride) {
+    int r = __ZN19CPlatformProperties21GetSupportedVRAMRangeE23KGraphicsControllerTypeiRjS1_(
+        self, ctl, accel3d, min, max, stride);
+    if (max && *max < 8192) *max = 8192;
+    return r;
 }
-
-// ─── Interpose table ─────────────────────────────────────────────────────────
-// Only VRAM COM interposes — no OpenGL stubs (those crash VM processes)
 
 static const InterposeEntry s_interpose[]
     __attribute__((section("__DATA,__interpose"), used)) = {
@@ -41,15 +33,14 @@ static const InterposeEntry s_interpose[]
     { (const void*)myGetSupportedVRAMRange,  (const void*)__ZN19CPlatformProperties21GetSupportedVRAMRangeE23KGraphicsControllerTypeiRjS1_ },
 };
 
-// ─── Init ────────────────────────────────────────────────────────────────────
-
 __attribute__((constructor))
 static void init(void) {
     @autoreleasepool {
-        NSLog(@"VBoxMetal3D: VRAM unlock active (8192MB cap)");
+        NSString *name = [[NSProcessInfo processInfo] processName];
+        if (![name isEqualToString:@"VirtualBoxVM"]
+            && ![name isEqualToString:@"VBoxHeadless"]
+            && ![name isEqualToString:@"VBoxXPCOMIPCD"]) {
+            NSLog(@"VBoxMetal3D: VRAM GUI cap unlocked to 8192MB");
+        }
     }
-}
-
-__attribute__((destructor))
-static void fini(void) {
 }

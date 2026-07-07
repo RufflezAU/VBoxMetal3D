@@ -43,7 +43,6 @@ $(TARGET): $(OBJECTS) | $(OBJROOT)
 install: $(TARGET) tools/vboxmetal.sh
 	mkdir -p $(DESTDIR)
 	cp $(TARGET) $(DESTDIR)/
-	cp shaders/VBoxMetalShaders.metal $(DESTDIR)/
 	cp tools/vboxmetal.sh $(DESTDIR)/
 	chmod +x $(DESTDIR)/vboxmetal.sh
 	@echo "Installed to $(DESTDIR)"
