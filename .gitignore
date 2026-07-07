@@ -1,0 +1,5 @@
+obj/
+*.dylib
+*.o
+*.pyc
+.DS_Store
