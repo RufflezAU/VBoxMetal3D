@@ -6,7 +6,7 @@ Replaces VirtualBox's CPU-bound software rendering with native Metal GPU access.
 Intercepts 52 OpenGL/CGL calls and redirects them to the M4's GPU cores.
 
 Also unlocks the 256MB video memory cap — on Apple Silicon, all RAM is unified,
-there's no separate VRAM pool. The slider shows values up to 8192MB.
+there's no separate VRAM pool. Every VM automatically gets 8GB VRAM.
 
 ## Quick start
 
@@ -32,7 +32,7 @@ That's it. Click the Dock icon to launch VirtualBox with GPU acceleration.
 | Feature | How |
 |---------|-----|
 | **GPU rendering** | All OpenGL calls from VirtualBox are intercepted via dyld and routed to Metal. The M4's GPU cores handle rendering instead of CPU. |
-| **VRAM slider** | The slider shows 256MB–8192MB. The cap is removed by intercepting `GetMaxGuestVRAM` and `GetSupportedVRAMRange` at runtime. |
+| **VRAM** | Every VM automatically gets 8GB VRAM at startup via device-level CFGM override. No per-VM setup needed. |
 | **Zero-copy** | Apple Silicon's unified memory means no buffer transfers between CPU and GPU. |
 
 ## Verify it's working
@@ -74,9 +74,11 @@ VBoxMetal3D/
 - **No Xcode required** — Metal shaders compile at runtime from source
 - **The interpose layer** uses the standard dyld `__DATA,__interpose` section to
   hook OpenGL functions at load time. No runtime patching, no code injection.
-- **VRAM unlock** works via dyld interpose of the COM methods that return the
-  cap. The `vram-unlock.sh` tool provides a device-level ExtraData override
-  as a fallback.
+- **VRAM unlock** happens automatically. When the dylib initializes in VirtualBox,
+  it runs `VBoxManage setextradata` on every VM to inject a device-level CFGM
+  override (`VBoxInternal/Devices/vga/0/Config/VRamSize = 8192`). This override
+  is read at VM startup and bypasses the 256MB GUI cap entirely. The GUI slider
+  still shows 256MB (compiled Qt limit), but the VM uses the full 8GB.
 - **The built VBoxSVC** with `MaxGuestVRAM=8192` is in the repo but cannot be
   installed on macOS Sequoia without breaking the app's code signature.
   The runtime interpose achieves the same result without modifying the app.
