@@ -423,16 +423,6 @@ static void init(void) {
             s_state.clearDepth = 1.0;
             NSLog(@"VBoxMetal3D: Interposed 57 OpenGL→Metal functions");
             NSLog(@"VBoxMetal3D: Device: %@", g_ctx.device.name);
-            // Auto-unlock VRAM to 8GB for all VMs
-            const char* vboxmanage = "/Applications/VirtualBox.app/Contents/MacOS/VBoxManage";
-            char cmd[4096];
-            snprintf(cmd, sizeof(cmd),
-                "%s list vms 2>/dev/null | grep -o '\"[^\"]*\"' | tr -d '\"' | "
-                "while read vm; do "
-                "%s setextradata \"$vm\" "
-                "\"VBoxInternal/Devices/vga/0/Config/VRamSize\" 8192 "
-                "2>/dev/null; done", vboxmanage, vboxmanage);
-            system(cmd);
         } else {
             NSLog(@"VBoxMetal3D: WARNING - Metal unavailable, OpenGL passthrough only");
         }
