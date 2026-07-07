@@ -20,10 +20,6 @@ LDFLAGS = -dynamiclib \
           -Wl,-undefined,dynamic_lookup
 
 SOURCES = \
-    src/MetalContext.mm \
-    src/MetalDisplay.mm \
-    src/MetalTexture.mm \
-    src/MetalRenderer.mm \
     src/MetalInterpose.mm \
     src/VBoxMetalPlugin.mm
 
