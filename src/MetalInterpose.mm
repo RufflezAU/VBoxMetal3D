@@ -317,12 +317,33 @@ static int myGetSupportedVRAMRange(void* self, uint32_t controllerType, int acce
     return result;
 }
 
+// ─── Qt slider interpose: bump 256→8192 for VRAM slider ──────────────────────
+// The compiled UIVideoMemoryEditor::updateRequirements() hardcodes 256 as the
+// visible slider max. Intercepting setMaximum on the slider/spinbox fixes this.
+
+// QIAdvancedSlider::setMaximum(int) — VirtualBox's custom slider
+extern "C" void __ZN16QIAdvancedSlider10setMaximumEi(void*, int);
+static void mySliderSetMaximum(void* self, int value) {
+    __ZN16QIAdvancedSlider10setMaximumEi(self, value == 256 ? 8192 : value);
+}
+
+// QAbstractSlider::setMaximum(int) — base class (fallback)
+extern "C" void __ZN15QAbstractSlider10setMaximumEi(void*, int);
+static void myAbstractSliderSetMaximum(void* self, int value) {
+    __ZN15QAbstractSlider10setMaximumEi(self, value == 256 ? 8192 : value);
+}
+
+// QSpinBox::setMaximum(int) — the VRAM spinbox
+extern "C" void __ZN8QSpinBox10setMaximumEi(void*, int);
+static void mySpinBoxSetMaximum(void* self, int value) {
+    __ZN8QSpinBox10setMaximumEi(self, value == 256 ? 8192 : value);
+}
+
 // ─── Interpose table ─────────────────────────────────────────────────────────
 
 static const InterposeEntry s_interpose[]
     __attribute__((section("__DATA,__interpose"), used)) = {
     { (const void*)myCGLChoosePixelFormat, (const void*)CGLChoosePixelFormat },
-    { (const void*)myCGLCreateContext,     (const void*)CGLCreateContext },
     { (const void*)myCGLCreateContext,     (const void*)CGLCreateContext },
     { (const void*)myCGLDestroyContext,    (const void*)CGLDestroyContext },
     { (const void*)myCGLSetCurrentContext, (const void*)CGLSetCurrentContext },
@@ -381,9 +402,13 @@ static const InterposeEntry s_interpose[]
     { (const void*)myglGetError,          (const void*)glGetError },
     { (const void*)myglFinish,            (const void*)glFinish },
     { (const void*)myglFlush,             (const void*)glFlush },
-    // VirtualBox GUI VRAM cap unlock (Apple Silicon unified memory — no VRAM pool, unified RAM)
+    // VirtualBox GUI VRAM cap unlock (Apple Silicon — no VRAM pool, unified RAM)
     { (const void*)myGetMaxGuestVRAM,        (const void*)__ZNK17CSystemProperties15GetMaxGuestVRAMEv },
     { (const void*)myGetSupportedVRAMRange,  (const void*)__ZN19CPlatformProperties21GetSupportedVRAMRangeE23KGraphicsControllerTypeiRjS1_ },
+    // Qt slider/spinbox setMaximum: bump 256→8192 to show full VRAM range
+    { (const void*)mySliderSetMaximum,       (const void*)__ZN16QIAdvancedSlider10setMaximumEi },
+    { (const void*)myAbstractSliderSetMaximum,(const void*)__ZN15QAbstractSlider10setMaximumEi },
+    { (const void*)mySpinBoxSetMaximum,      (const void*)__ZN8QSpinBox10setMaximumEi },
 };
 
 // ─── Init ────────────────────────────────────────────────────────────────────
