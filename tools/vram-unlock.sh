@@ -27,11 +27,11 @@ case "${1:-}" in
         apply_vm "$2"
         ;;
     --all|-a)
-        echo -e "${YELLOW}Setting all VMs to ${VRAM_MB}MB VRAM...${NC}"
-        VBoxManage list vms 2>/dev/null | while IFS='"' read -r name uuid; do
-            [ -n "$name" ] && apply_vm "$name"
+        local count=0
+        VBoxManage list vms 2>/dev/null | grep -o '"[^"]*"' | tr -d '"' | while read vm; do
+            [ -n "$vm" ] && apply_vm "$vm" && count=$((count + 1))
         done
-        echo -e "${GREEN}Done. New VMs can be set with: $0 --vm \"VM Name\"${NC}"
+        [ "$count" -gt 0 ] && echo -e "${GREEN}Done (${count} VM(s)).${NC}" || echo -e "${YELLOW}No VMs found.${NC}"
         ;;
     --list|-l)
         echo -e "${BLUE}VMs:${NC}"
