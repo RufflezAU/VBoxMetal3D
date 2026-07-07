@@ -27,6 +27,17 @@ open ~/Applications/VBoxMetal3D.app
 
 That's it. Click the Dock icon to launch VirtualBox with GPU acceleration.
 
+## VM setup for GPU acceleration
+
+Each VM needs these settings for the GPU acceleration to activate:
+
+1. **Graphics Controller**: Set to **VMSVGA** (default — verify in Settings → Display)
+2. **Install Guest Additions**: In the VM menu, *Devices → Insert Guest Additions CD image*, then run the installer inside the guest OS
+3. **Enable 3D Acceleration**: Shut down the VM → Settings → Display → check **Enable 3D Acceleration** (greyed out until Guest Additions are installed)
+4. **Launch**: Always use the **VBoxMetal3D** Dock icon (not the original VirtualBox icon)
+
+Once set, every launch through the Dock wrapper gives you Metal GPU + 8GB VRAM automatically.
+
 ## What it does
 
 | Feature | How |
