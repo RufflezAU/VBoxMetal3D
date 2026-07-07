@@ -1,0 +1,11 @@
+--- a/configure
++++ b/configure
+@@ -2330,6 +2330,9 @@ check_darwinversion()
+   darwin_ver=`uname -r`
+   case "$darwin_ver" in
+     25\.*)
++      darwin_ver="16.0" # macOS 17+
++      ;;
++    24\.*)
+       darwin_ver="15.0" # Sequoia
+       ;; 

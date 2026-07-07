@@ -1,0 +1,22 @@
+# VBoxMetal3D: kBuild SDK definition for macOS 26.5 SDK (Apple Silicon)
+SDK_MACOSX265 := macOS 26.5 SDK (Apple Silicon, VBoxMetal3D)
+
+ifndef PATH_SDK_MACOSX265
+ ifdef VBOX_PATH_MACOSX_SDK
+  PATH_SDK_MACOSX265 := $(VBOX_PATH_MACOSX_SDK)
+ else
+  PATH_SDK_MACOSX265 := /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+ endif
+else
+ PATH_SDK_MACOSX265 := $(PATH_SDK_MACOSX265)
+endif
+
+SDK_MACOSX265_VERSION_ARG   := 26.5
+SDK_MACOSX265_VERSION_VALUE := $(subst .,,$(SDK_MACOSX265_VERSION_ARG))000
+
+SDK_MACOSX265_DEFS        ?= MAC_OS_X_VERSION_MIN_REQUIRED=$(SDK_MACOSX265_VERSION_VALUE)
+SDK_MACOSX265_CFLAGS      ?= -mmacosx-version-min=$(SDK_MACOSX265_VERSION_ARG) -isysroot "$(PATH_SDK_MACOSX265)" -arch arm64
+SDK_MACOSX265_CXXFLAGS    ?= -mmacosx-version-min=$(SDK_MACOSX265_VERSION_ARG) -isysroot "$(PATH_SDK_MACOSX265)" -arch arm64 -stdlib=libc++
+SDK_MACOSX265_OBJCFLAGS   ?= -mmacosx-version-min=$(SDK_MACOSX265_VERSION_ARG) -isysroot "$(PATH_SDK_MACOSX265)" -arch arm64
+SDK_MACOSX265_OBJCXXFLAGS ?= -mmacosx-version-min=$(SDK_MACOSX265_VERSION_ARG) -isysroot "$(PATH_SDK_MACOSX265)" -arch arm64 -stdlib=libc++
+SDK_MACOSX265_LDFLAGS     ?= -mmacosx-version-min=$(SDK_MACOSX265_VERSION_ARG) -isysroot "$(PATH_SDK_MACOSX265)" -arch arm64
