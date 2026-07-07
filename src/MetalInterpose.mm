@@ -293,9 +293,28 @@ static void myglFlush(void) {}
 
 // CSystemProperties::GetMaxGuestVRAM() const — returns the cap shown in the GUI
 // On ARM64 macOS, C++ ABI returns uint32_t in w0
+// CSystemProperties::GetMaxGuestVRAM() const — returns the cap shown in the GUI
 extern "C" uint32_t __ZNK17CSystemProperties15GetMaxGuestVRAMEv(void);
 static uint32_t myGetMaxGuestVRAM(void) {
-    return 8192; // 8GB cap for Apple Silicon unified memory
+    return 8192;
+}
+
+// CPlatformProperties::GetSupportedVRAMRange(KGraphicsControllerType, BOOL, ULONG&, ULONG&, ULONG&)
+// This is called by the GUI to determine the slider range. We need to return 8192 max.
+// Signature: HRESULT GetSupportedVRAMRange(uint32_t, int, uint32_t*, uint32_t*, uint32_t*)
+extern "C" int __ZN19CPlatformProperties21GetSupportedVRAMRangeE23KGraphicsControllerTypeiRjS1_(void*, uint32_t, int, uint32_t*, uint32_t*, uint32_t*);
+static int myGetSupportedVRAMRange(void* self, uint32_t controllerType, int accel3d,
+                                    uint32_t* outMin, uint32_t* outMax, uint32_t* outStride) {
+    int result = __ZN19CPlatformProperties21GetSupportedVRAMRangeE23KGraphicsControllerTypeiRjS1_(
+        self, controllerType, accel3d, outMin, outMax, outStride);
+    if (outMax && *outMax > 256) {
+        // Already high enough, no need to change
+    } else if (outMax) {
+        *outMax = 8192; // Unlock to 8GB on Apple Silicon
+    }
+    if (outMin && *outMin < 32) *outMin = 32;
+    if (outStride) *outStride = 1; // Allow any step
+    return result;
 }
 
 // ─── Interpose table ─────────────────────────────────────────────────────────
@@ -362,8 +381,9 @@ static const InterposeEntry s_interpose[]
     { (const void*)myglGetError,          (const void*)glGetError },
     { (const void*)myglFinish,            (const void*)glFinish },
     { (const void*)myglFlush,             (const void*)glFlush },
-    // VirtualBox GUI VRAM cap unlock (Apple Silicon unified memory)
-    { (const void*)myGetMaxGuestVRAM,     (const void*)__ZNK17CSystemProperties15GetMaxGuestVRAMEv },
+    // VirtualBox GUI VRAM cap unlock (Apple Silicon unified memory — no VRAM pool, unified RAM)
+    { (const void*)myGetMaxGuestVRAM,        (const void*)__ZNK17CSystemProperties15GetMaxGuestVRAMEv },
+    { (const void*)myGetSupportedVRAMRange,  (const void*)__ZN19CPlatformProperties21GetSupportedVRAMRangeE23KGraphicsControllerTypeiRjS1_ },
 };
 
 // ─── Init ────────────────────────────────────────────────────────────────────
