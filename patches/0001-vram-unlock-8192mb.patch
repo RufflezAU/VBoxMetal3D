@@ -1,0 +1,55 @@
+From: VBoxMetal3D <https://github.com/RufflezAU/VBoxMetal3D>
+Subject: VRAM unlock: raise cap from 256MB to 8192MB for Apple Silicon unified memory
+
+On Apple Silicon (M1-M4), there is no separate VRAM pool — all memory is unified.
+The 256MB cap is an x86-era artifact. This patch raises the limit to 8192MB (8GB)
+which is safe on any modern Mac.
+
+Changes in 3 files:
+ 1. VirtualBox-settings.xsd     — root schema cap (MaxGuestVRAM generated from this)
+ 2. UIVideoMemoryEditor.cpp     — hardcoded 256 in the Qt slider code
+ 3. PlatformPropertiesImpl.cpp  — runtime clamp to SchemaDefs::MaxGuestVRAM
+
+diff --git a/src/VBox/Main/xml/VirtualBox-settings.xsd b/src/VBox/Main/xml/VirtualBox-settings.xsd
+index abc123..def456 100644
+--- a/src/VBox/Main/xml/VirtualBox-settings.xsd
++++ b/src/VBox/Main/xml/VirtualBox-settings.xsd
+@@ -253,7 +253,7 @@
+     <xsd:simpleType>
+       <xsd:restriction base="xsd:unsignedInt">
+         <xsd:minInclusive value="0"/>
+-        <xsd:maxInclusive value="256"/>
++        <xsd:maxInclusive value="8192"/>
+       </xsd:restriction>
+     </xsd:simpleType>
+   </xsd:attribute>
+
+diff --git a/src/VBox/Frontends/VirtualBox/src/settings/editors/UIVideoMemoryEditor.cpp b/src/VBox/Frontends/VirtualBox/src/settings/editors/UIVideoMemoryEditor.cpp
+index abc123..def456 100644
+--- a/src/VBox/Frontends/VirtualBox/src/settings/editors/UIVideoMemoryEditor.cpp
++++ b/src/VBox/Frontends/VirtualBox/src/settings/editors/UIVideoMemoryEditor.cpp
+@@ -343,8 +343,8 @@ void UIVideoMemoryEditor::updateRequirements()
+         iNeedMBytes = qMax(iNeedMBytes, 128);
+
+         /* Adjust visible maximum VRAM to be no less than 256MB (if possible): */
+-        if (iMaxVRAMVisible < 256 && uMaxVRAM >= 256)
+-            iMaxVRAMVisible = 256;
++        if (iMaxVRAMVisible < (int)m_iMaxVRAM && uMaxVRAM >= (uint32_t)m_iMaxVRAM)
++            iMaxVRAMVisible = m_iMaxVRAM;
+     }
+ #endif /* VBOX_WITH_3D_ACCELERATION */
+
+diff --git a/src/VBox/Main/src-server/PlatformPropertiesImpl.cpp b/src/VBox/Main/src-server/PlatformPropertiesImpl.cpp
+index abc123..def456 100644
+--- a/src/VBox/Main/src-server/PlatformPropertiesImpl.cpp
++++ b/src/VBox/Main/src-server/PlatformPropertiesImpl.cpp
+@@ -967,8 +967,8 @@ HRESULT PlatformProperties::s_getSupportedVRAMRange(GraphicsControllerType_T aG
+ 
+     /* Finally, clamp the values to our schema definitions before returning. */
+-    if (cbMax > SchemaDefs::MaxGuestVRAM)
+-        cbMax = SchemaDefs::MaxGuestVRAM;
++    /* On Apple Silicon unified memory, the VRAM cap is the XSD schema limit (8192MB). */
++    /* The SchemaDefs::MaxGuestVRAM clamp is removed to allow full range. */
+ 
+     *aMinMB = (ULONG)cbMin;
+     *aMaxMB = (ULONG)cbMax;
