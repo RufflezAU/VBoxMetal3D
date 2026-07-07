@@ -286,6 +286,18 @@ static GLenum myglGetError(void) { return GL_NO_ERROR; }
 static void myglFinish(void) { if(g_ctx)[g_ctx waitForGPU]; }
 static void myglFlush(void) {}
 
+// ─── VirtualBox GUI: unlock VRAM slider ──────────────────────────────────────
+// These are C++ COM methods in UICommon.dylib that cap video memory at 256MB.
+// On Apple Silicon unified memory, there's no hardware VRAM limit.
+// Interposing them allows the GUI slider and VBoxManage to accept higher values.
+
+// CSystemProperties::GetMaxGuestVRAM() const — returns the cap shown in the GUI
+// On ARM64 macOS, C++ ABI returns uint32_t in w0
+extern "C" uint32_t __ZNK17CSystemProperties15GetMaxGuestVRAMEv(void);
+static uint32_t myGetMaxGuestVRAM(void) {
+    return 8192; // 8GB cap for Apple Silicon unified memory
+}
+
 // ─── Interpose table ─────────────────────────────────────────────────────────
 
 static const InterposeEntry s_interpose[]
@@ -350,6 +362,8 @@ static const InterposeEntry s_interpose[]
     { (const void*)myglGetError,          (const void*)glGetError },
     { (const void*)myglFinish,            (const void*)glFinish },
     { (const void*)myglFlush,             (const void*)glFlush },
+    // VirtualBox GUI VRAM cap unlock (Apple Silicon unified memory)
+    { (const void*)myGetMaxGuestVRAM,     (const void*)__ZNK17CSystemProperties15GetMaxGuestVRAMEv },
 };
 
 // ─── Init ────────────────────────────────────────────────────────────────────
