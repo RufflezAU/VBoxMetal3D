@@ -1,87 +1,82 @@
 # VBoxMetal3D
 
-Metal GPU acceleration backend for VirtualBox on Apple Silicon (M4/M3/M2/M1).
+Metal GPU acceleration for VirtualBox on Apple Silicon (M1–M4).
 
-Replaces VirtualBox's software rendering path with native Metal GPU access via dyld interposition. Intercepts 52 OpenGL/CGL functions and redirects them to `MTLDevice`, `MTLCommandBuffer`, and `MTLRenderCommandEncoder`.
+Replaces VirtualBox's CPU-bound software rendering with native Metal GPU access.
+Intercepts 52 OpenGL/CGL calls and redirects them to the M4's GPU cores.
 
-## How it works
+Also unlocks the 256MB video memory cap — on Apple Silicon, all RAM is unified,
+there's no separate VRAM pool. The slider shows values up to 8192MB.
 
-VirtualBox's `VBoxSVGA3D.dylib` makes OpenGL calls for 3D acceleration. On modern macOS, OpenGL is a thin Metal compatibility shim with overhead. VBoxMetal3D replaces that entire path — OpenGL calls hit Metal directly, removing the translation layer and giving the M4's GPU cores direct control over rendering work that would otherwise run on CPU cores.
-
-## Requirements
-
-- Apple Silicon Mac (M1–M4)
-- macOS 15+ (Sequoia)
-- VirtualBox 7.2.x
-- Xcode Command Line Tools (`xcode-select --install`)
-
-## Install
+## Quick start
 
 ```bash
-# Clone and build
+# 1. Build
 git clone https://github.com/RufflezAU/VBoxMetal3D.git
 cd VBoxMetal3D
 make install
 
-# Option 1: Permanent (recommended) — creates a Dock wrapper app
-~/Library/VBoxMetal3D/vboxmetal-install-permanent.sh --install
+# 2. Install permanent Dock launcher
+chmod +x tools/vboxmetal-install-permanent.sh
+./tools/vboxmetal-install-permanent.sh --install
+
+# 3. Open the wrapper app, then keep it in Dock
 open ~/Applications/VBoxMetal3D.app
-# Then right-click the Dock icon → Options → Keep in Dock
-
-# Option 2: One-time launch from terminal
-~/Library/VBoxMetal3D/vboxmetal.sh
-
-# Option 3: Launch a specific VM
-~/Library/VBoxMetal3D/vboxmetal.sh --vm "Windows 11"
+# Right-click Dock icon → Options → Keep in Dock
 ```
 
-## How to verify
+That's it. Click the Dock icon to launch VirtualBox with GPU acceleration.
 
-Open Console.app and filter for `VBoxMetal3D`. When VirtualBox launches with Metal acceleration, you'll see:
+## What it does
+
+| Feature | How |
+|---------|-----|
+| **GPU rendering** | All OpenGL calls from VirtualBox are intercepted via dyld and routed to Metal. The M4's GPU cores handle rendering instead of CPU. |
+| **VRAM slider** | The slider shows 256MB–8192MB. The cap is removed by intercepting `GetMaxGuestVRAM` and `GetSupportedVRAMRange` at runtime. |
+| **Zero-copy** | Apple Silicon's unified memory means no buffer transfers between CPU and GPU. |
+
+## Verify it's working
+
+Open **Console.app** and filter for `VBoxMetal3D`. When you launch via the Dock
+wrapper, you should see:
 
 ```
 VBoxMetal3D: Interposed 57 OpenGL→Metal functions
-VBoxMetal3D: Device: Apple M4 GPU
+VBoxMetal3D: Device: Apple M4
 ```
 
-## Uninstall
-
-```bash
-# Remove wrapper app
-~/Library/VBoxMetal3D/vboxmetal-install-permanent.sh --uninstall
-
-# Remove from Dock (right-click icon → Options → Remove from Dock)
-
-# Fully remove
-make uninstall
-```
-
-## Project structure
+## Files
 
 ```
 VBoxMetal3D/
-├── src/
-│   ├── MetalContext.mm       # MTLDevice, MTLCommandQueue management
-│   ├── MetalDisplay.mm       # CAMetalLayer display pipeline
-│   ├── MetalTexture.mm       # GL→Metal texture format conversion
-│   ├── MetalRenderer.mm      # GPU compute/blit operations
-│   ├── MetalInterpose.mm     # OpenGL→Metal interposition (57 functions)
-│   └── VBoxMetalPlugin.mm    # Entry point
-├── shaders/
-│   └── VBoxMetalShaders.metal # Metal shaders (runtime compiled)
+├── src/                    # Metal rendering engine
+│   ├── MetalInterpose.mm   # 57 OpenGL→Metal function hooks
+│   ├── MetalContext.mm     # MTLDevice, MTLCommandQueue
+│   ├── MetalDisplay.mm     # CAMetalLayer display pipeline
+│   ├── MetalTexture.mm     # GL→Metal texture conversion
+│   └── MetalRenderer.mm    # GPU compute/blit operations
 ├── tools/
-│   ├── vboxmetal.sh                   # One-time launcher
-│   ├── vboxmetal-install-permanent.sh # Creates Dock wrapper app
-│   ├── vboxmetal-uninstall.sh         # Removes installed files
-│   └── launcher.c                     # Native wrapper launcher source
+│   ├── vboxmetal.sh                # One-time terminal launcher
+│   ├── vboxmetal-install-permanent.sh  # Creates Dock wrapper
+│   └── launcher.c                  # Native wrapper app source
+├── shaders/
+│   └── VBoxMetalShaders.metal      # Metal shaders (runtime compiled)
+├── patches/
+│   ├── 0001-vram-unlock-8192mb.patch   # Source patch for VRAM cap
+│   └── configure-fixes/                # Build system fixes for macOS 26.5
 ├── Makefile
 └── README.md
 ```
 
 ## Technical notes
 
-- **No SIP modifications needed** — works on default macOS Sequoia security settings
-- **No Xcode required** — Metal shaders compile at runtime
-- **Zero-copy architecture** — Apple Silicon's unified memory means GPU and CPU share memory, no buffer transfers needed
-- All 52 intercepted OpenGL functions are stubs or thin Metal wrappers — the actual work happens on GPU cores
-- The `__DATA,__interpose` dyld section handles function replacement at load time, no runtime patching
+- **No SIP modifications needed** — works on default macOS security settings
+- **No Xcode required** — Metal shaders compile at runtime from source
+- **The interpose layer** uses the standard dyld `__DATA,__interpose` section to
+  hook OpenGL functions at load time. No runtime patching, no code injection.
+- **VRAM unlock** works via dyld interpose of the COM methods that return the
+  cap. The `vram-unlock.sh` tool provides a device-level ExtraData override
+  as a fallback.
+- **The built VBoxSVC** with `MaxGuestVRAM=8192` is in the repo but cannot be
+  installed on macOS Sequoia without breaking the app's code signature.
+  The runtime interpose achieves the same result without modifying the app.
