@@ -1,0 +1,11 @@
+# Build artifacts
+obj/
+*.o
+*.dylib
+
+# OS
+.DS_Store
+
+# Temp
+*.original
+*.patched
